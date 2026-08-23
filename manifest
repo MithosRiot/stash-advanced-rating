@@ -1,0 +1,30 @@
+id: advancedRating
+name: Advanced Rating
+metadata:
+  description: Rate scenes and performers across configurable criteria; the overall
+    Stash rating is calculated from a weighted average. Configure groups, criteria,
+    weights, and descriptions in the plugin settings panel. Replaces the separate
+    Advanced Scene Rating and Advanced Performer Rating plugins; existing settings
+    are imported automatically on first run.
+version: 3.1.0-3ea9d21
+date: "2026-06-09 23:02:21"
+requires: []
+source_repository: https://ordureconnoisseur.github.io/plugins/main/index.yml
+files:
+- vendor\stashapi\stash_types.py
+- vendor\stashapi\stashapp.py
+- vendor\stashapi\marker_parse.py
+- vendor\stashapi\stashbox.py
+- vendor\stashapi\classes.py
+- vendor\stashapi\tools.py
+- vendor\stashapi\log.py
+- vendor\stashapi\scrape_parser.py
+- vendor\LICENSE
+- advancedRating.yml
+- advanced-rating-ui.css
+- README.md
+- LICENSE
+- advanced-rating-ui.js
+- advancedRating.py
+- lib\rating_core.py
+- lib\migration.py
