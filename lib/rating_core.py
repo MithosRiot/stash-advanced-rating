@@ -116,17 +116,26 @@ def _criteria_from_legacy_defaults(settings, default_criteria, valid_group_ids, 
     return out
 
 
-def tag_prefix(criterion):
-    return f"{criterion['name']}{TAG_SUFFIX}"
+def tag_prefix(tag_parent_def, criterion, groups):
+    group = next((g for g in groups if g["id"] == criterion["group"]), None)
+    group_name = group["name"] if group else criterion["group"]
+    return f"{group_name} · {criterion['name']}{TAG_SUFFIX}"
 
 
-def calculate_rating(entity, criteria, groups, precision, log):
+def calculate_rating(entity, criteria, groups, precision, log, tag_parent_def):
     """Compute new rating100 from tag matches; return int or None if no change is
     appropriate. Caller decides whether to push the update."""
     enabled = [c for c in criteria if c["enabled"]]
     if not enabled:
         return None
-    by_prefix = {tag_prefix(c): c for c in enabled}
+    by_prefix = {tag_prefix(tag_parent_def, c, groups): c for c in enabled}
+    for c in enabled:
+        by_prefix[f"{tag_parent_def['name']} · {tag_prefix(tag_parent_def, c, groups)}"] = c
+    # Read predecessor name-only tags until the settings UI upgrades them.
+    # A collided legacy tag can represent only one value, so the first
+    # configured criterion with that name owns it deterministically.
+    for c in enabled:
+        by_prefix.setdefault(f"{c['name']}{TAG_SUFFIX}", c)
 
     hits_by_group = {g["id"]: [] for g in groups}
     tags = [tag["name"] for tag in (entity.get("tags") or [])]
@@ -197,7 +206,7 @@ def find_tag(stash, name, log, create=False, parent_id=None):
     return tag
 
 
-def create_tags(stash, tag_parent_def, criteria, log):
+def create_tags(stash, tag_parent_def, criteria, groups, log):
     log.info("CREATING TAGS ...")
     root_tag = find_tag(stash, tag_parent_def["name"], log, create=True)
     if not root_tag:
@@ -205,7 +214,7 @@ def create_tags(stash, tag_parent_def, criteria, log):
         return
     parent_id = root_tag["id"]
     for c in criteria:
-        prefix = tag_prefix(c)
+        prefix = tag_prefix(tag_parent_def, c, groups)
         cat_tag = find_tag(stash, prefix, log, create=True, parent_id=parent_id)
         if not cat_tag:
             log.error(f"CREATE TAGS: Failed to create '{prefix}', skipping.")
@@ -217,7 +226,7 @@ def create_tags(stash, tag_parent_def, criteria, log):
                 log.error(f"CREATE TAGS: Failed to create subtag '{num_tag_name}'")
 
 
-def remove_tags(stash, tag_parent_def, criteria, allow_destructive, log):
+def remove_tags(stash, tag_parent_def, criteria, groups, allow_destructive, log):
     log.info("REMOVING TAGS ...")
     if not allow_destructive:
         log.warning("REMOVE TAGS: Destructive actions disabled.")
@@ -232,7 +241,7 @@ def remove_tags(stash, tag_parent_def, criteria, allow_destructive, log):
             log.error(f"REMOVE TAG: Failed to remove '{name}': {e}")
 
     for c in criteria:
-        prefix = tag_prefix(c)
+        prefix = tag_prefix(tag_parent_def, c, groups)
         for i in range(0, 6):
             _remove(f"{prefix}: {i}")
         _remove(prefix)

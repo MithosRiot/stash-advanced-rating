@@ -67,7 +67,18 @@
         return Number.isFinite(n) ? n : def;
     }
 
-    function tagPrefix(criterion) { return `${criterion.name}${TAG_SUFFIX}`; }
+    function groupForCriterion(groups, criterion) {
+        return (groups || []).find(g => g.id === criterion.group);
+    }
+    function tagPrefix(domain, criterion, groups) {
+        const group = groupForCriterion(groups, criterion);
+        const groupName = group ? group.name : criterion.group;
+        return `${groupName} · ${criterion.name}${TAG_SUFFIX}`;
+    }
+    function verboseTagPrefix(domain, criterion, groups) {
+        return `${domain.rootTagName} · ${tagPrefix(domain, criterion, groups)}`;
+    }
+    function legacyTagPrefix(criterion) { return `${criterion.name}${TAG_SUFFIX}`; }
 
     /* ─── Migration trigger ──────────────────────────────────────────── */
     async function runMigrationTask() {
@@ -261,6 +272,7 @@
     // hit the temporal dead zone and abort trigger injection.
     const INLINE_PANEL_ID = "adv-rating-inline-panel";
     const INLINE_OPEN_KEY = "asrInlineOpen";
+    const PERFORMER_SIDE_PANEL_ID = "adv-rating-performer-side-panel";
 
     /* ─── Domain-aware config helpers ────────────────────────────────── */
     function groupsFromConfig(config, domain) {
@@ -342,9 +354,14 @@
     }
 
     /* ─── Shared math: breakdown + computeRating100 ──────────────────── */
-    function computeBreakdown(entityTags, groups, criteria, ratingPrecision) {
+    function computeBreakdown(domain, entityTags, groups, criteria, ratingPrecision) {
         const byPrefix = {};
-        criteria.forEach(c => { byPrefix[tagPrefix(c)] = c; });
+        criteria.forEach(c => {
+            byPrefix[tagPrefix(domain, c, groups)] = c;
+            byPrefix[verboseTagPrefix(domain, c, groups)] = c;
+            const legacy = legacyTagPrefix(c);
+            if (!byPrefix[legacy]) byPrefix[legacy] = c;
+        });
         const scoresByCriterion = {};
         for (const tag of entityTags) {
             const m = (tag.name || "").match(CATEGORY_PATTERN);
@@ -387,11 +404,16 @@
         };
     }
 
-    function computeRating100(entityTags, groups, criteria, ratingPrecision, minimumRequired) {
+    function computeRating100(domain, entityTags, groups, criteria, ratingPrecision, minimumRequired) {
         const enabled = criteria.filter(c => c.enabled);
         if (!enabled.length) return null;
         const byPrefix = {};
-        enabled.forEach(c => { byPrefix[tagPrefix(c)] = c; });
+        enabled.forEach(c => {
+            byPrefix[tagPrefix(domain, c, groups)] = c;
+            byPrefix[verboseTagPrefix(domain, c, groups)] = c;
+            const legacy = legacyTagPrefix(c);
+            if (!byPrefix[legacy]) byPrefix[legacy] = c;
+        });
         const hitsByGroup = {};
         groups.forEach(g => { hitsByGroup[g.id] = []; });
         for (const tag of entityTags) {
@@ -453,13 +475,13 @@
         return true;
     }
 
-    async function createMissingTags(domain, criteria) {
+    async function createMissingTags(domain, groups, criteria) {
         const enabled = criteria.filter(c => c.enabled);
         if (!enabled.length) return { createdParent: false, createdCategories: 0, createdLevels: 0 };
         const root = await findOrCreateTag(domain.rootTagName, null);
         let createdCategories = 0, createdLevels = 0;
         for (const c of enabled) {
-            const prefix = tagPrefix(c);
+            const prefix = tagPrefix(domain, c, groups);
             const cat = await findOrCreateTag(prefix, root.id);
             if (cat.created) createdCategories++;
             for (let i = 0; i <= 5; i++) {
@@ -470,7 +492,7 @@
         return { createdParent: root.created, createdCategories, createdLevels };
     }
 
-    async function findOrphanCriterionTags(domain, criteria) {
+    async function findOrphanCriterionTags(domain, groups, criteria) {
         const parentId = await getTagIdByName(domain.rootTagName);
         if (!parentId) return { parentMissing: true, orphans: [] };
         const res = await gqlClient(`query($filter: TagFilterType) {
@@ -479,7 +501,7 @@
             }
         }`, { filter: { parents: { value: [parentId], modifier: "INCLUDES" } } });
         const tags = (res.data && res.data.findTags && res.data.findTags.tags) || [];
-        const currentPrefixes = new Set(criteria.map(c => tagPrefix(c)));
+        const currentPrefixes = new Set(criteria.map(c => tagPrefix(domain, c, groups)));
         const orphans = tags
             .filter(t => !currentPrefixes.has(t.name))
             .map(t => ({ id: t.id, name: t.name, childCount: (t.children || []).length }));
@@ -502,10 +524,10 @@
         return destroyed;
     }
 
-    async function destroyAllRatingTags(domain, criteria) {
+    async function destroyAllRatingTags(domain, groups, criteria) {
         let destroyed = 0;
         for (const c of criteria) {
-            const prefix = tagPrefix(c);
+            const prefix = tagPrefix(domain, c, groups);
             for (let i = 0; i <= 5; i++) {
                 if (await destroyTagByName(`${prefix}: ${i}`)) destroyed++;
             }
@@ -584,7 +606,7 @@
         let updated = 0, skipped = 0;
         for (let i = 0; i < items.length; i++) {
             const it = items[i];
-            const newRating = computeRating100(it.tags || [], groups, criteria, ratingPrecision, minimumRequired);
+            const newRating = computeRating100(domain, it.tags || [], groups, criteria, ratingPrecision, minimumRequired);
             if (newRating === null || newRating === it.rating100) { skipped++; }
             else {
                 await domain.updateEntityRating(it.id, newRating);
@@ -637,7 +659,10 @@
                     if (existing) existing.remove();
                     // Drop the stale inline panel when moving to a new scene so
                     // it can't show the previous scene's ratings.
-                    if (domain.entityType === 'scene') removeScenePanel();
+                    if (domain.entityType === 'scene') {
+                        removeScenePanel();
+                        removePerformerSidePanel();
+                    }
                     startPolling(domain, entityId);
                 }
                 // Clear other domain state since URL doesn't match it
@@ -650,7 +675,10 @@
                         }
                         const oex = document.querySelector('#' + other.triggerId);
                         if (oex) oex.remove();
-                        if (other.entityType === 'scene') removeScenePanel();
+                        if (other.entityType === 'scene') {
+                            removeScenePanel();
+                            removePerformerSidePanel();
+                        }
                     }
                 }
                 return;
@@ -658,6 +686,7 @@
         }
         // No domain matched — clear everything.
         removeScenePanel();
+        removePerformerSidePanel();
         for (const domain of DOMAINS) {
             const key = domain.entityType;
             lastPaths[key] = null;
@@ -701,6 +730,7 @@
             injectFavouriteBtn(triggerBtn, entityId);
         }
         if (domain.entityType === 'scene') {
+            ensurePerformerSidePanel();
             restoreScenePanel(entityId);
         }
     }
@@ -712,7 +742,7 @@
                 domain.fetchEntityTags(entityId),
             ]);
             if (!triggerBtn.isConnected) return;
-            const breakdown = computeBreakdown(entityTags, groups, criteria, 10);
+            const breakdown = computeBreakdown(domain, entityTags, groups, criteria, 10);
             if (breakdown.totalUnrated === 0) {
                 triggerBtn.title = domain.triggerHelpStrings.allRated;
                 return;
@@ -837,7 +867,7 @@
             const breakdownEl = host.querySelector('.adv-rating-breakdown');
             listContainer.innerHTML = '';
 
-            const breakdown = computeBreakdown(entityTags, groups, criteria, precision);
+            const breakdown = computeBreakdown(domain, entityTags, groups, criteria, precision);
             const currentScores = breakdown.scoresByCriterion;
             currentRating100 = (breakdown.finalAvg !== null && typeof breakdown.rating100 === 'number')
                 ? breakdown.rating100 : null;
@@ -865,7 +895,7 @@
                     listContainer.appendChild(groupHeader);
                 }
                 groupCriteria.forEach(c => {
-                    const prefix = tagPrefix(c);
+                    const prefix = tagPrefix(domain, c, groups);
                     const score = currentScores[c.id] !== undefined ? currentScores[c.id] : null;
                     const row = document.createElement('div');
                     row.className = 'rating-row' + (score === null ? ' rating-unrated' : '');
@@ -1105,6 +1135,96 @@
         const panel = ensureScenePanel();
         if (panel) setScenePanelOpen(panel, true, sceneId, false);
     }
+
+    // Performer ratings opened from a performer card in a scene's Details
+    // tab. This is a sibling of the player, so it forms a true right column.
+    function removePerformerSidePanel() {
+        const panel = document.getElementById(PERFORMER_SIDE_PANEL_ID);
+        if (panel) panel.remove();
+    }
+
+    function ensurePerformerSidePanel() {
+        let panel = document.getElementById(PERFORMER_SIDE_PANEL_ID);
+        if (panel) return panel;
+        const player = document.querySelector('.scene-player-container');
+        if (!player || !player.parentElement) return null;
+        panel = document.createElement('aside');
+        panel.id = PERFORMER_SIDE_PANEL_ID;
+        panel.className = 'adv-rating-performer-side-panel minimized';
+        panel.setAttribute('aria-label', 'Advanced performer ratings');
+        panel.innerHTML = `
+            <button type="button" class="adv-rating-side-rail" title="Show performer ratings" aria-label="Show performer ratings">&#9733;</button>
+            <div class="adv-rating-side-content">
+                <div class="adv-rating-inline-head">
+                    <div>
+                        <span class="adv-rating-inline-title">Performer Ratings</span>
+                        <div class="adv-rating-side-performer"></div>
+                    </div>
+                    <button type="button" class="adv-rating-side-minimize" title="Minimize" aria-label="Minimize performer ratings">&times;</button>
+                </div>
+                <div class="adv-rating-subhead"></div>
+                <div class="ratings-list">Choose a performer from the Details tab.</div>
+                <div class="adv-rating-breakdown"></div>
+            </div>`;
+        player.insertAdjacentElement('afterend', panel);
+        panel.querySelector('.adv-rating-side-minimize').addEventListener('click', () => {
+            panel.classList.add('minimized');
+            panel.classList.remove('open');
+        });
+        panel.querySelector('.adv-rating-side-rail').addEventListener('click', () => {
+            if (!panel.dataset.performerId) return;
+            panel.classList.remove('minimized');
+            panel.classList.add('open');
+        });
+        return panel;
+    }
+
+    function performerFromCard(card) {
+        const link = card && card.querySelector('a[href*="/performers/"]');
+        const match = link && (link.getAttribute('href') || '').match(/\/performers\/(\d+)/);
+        if (!match) return null;
+        const nameNode = card.querySelector('.card-section-title, .refract-pc-name-text, img[alt]');
+        const name = nameNode
+            ? (nameNode.textContent || nameNode.getAttribute('alt') || '').trim()
+            : '';
+        return { id: match[1], name };
+    }
+
+    async function openPerformerSidePanel(performer) {
+        const panel = ensurePerformerSidePanel();
+        if (!panel) return;
+        panel.dataset.performerId = performer.id;
+        panel.classList.remove('minimized');
+        panel.classList.add('open');
+        panel.querySelector('.adv-rating-side-performer').textContent =
+            performer.name || ('Performer #' + performer.id);
+        const list = panel.querySelector('.ratings-list');
+        list.textContent = 'Loading...';
+        panel.querySelector('.adv-rating-breakdown').innerHTML = '';
+        panel.querySelector('.adv-rating-subhead').innerHTML = '';
+        try {
+            await mountRatingUI(panel, performerDomain, performer.id);
+        } catch (e) {
+            list.textContent = 'Could not load performer ratings.';
+            console.warn('[advancedRating] performer side panel mount failed', e);
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        if (!/^\/scenes\/\d+/.test(window.location.pathname)) return;
+        const bubble = event.target.closest(
+            '.scene-tabs .performer-card .rating-banner, ' +
+            '.scene-tabs .performer-card .stash-perf-rating'
+        );
+        if (!bubble) return;
+        const detailsPane = bubble.closest('.tab-pane');
+        if (detailsPane && !detailsPane.classList.contains('active')) return;
+        const performer = performerFromCard(bubble.closest('.performer-card'));
+        if (!performer) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openPerformerSidePanel(performer);
+    }, true);
 
     /* ─────────────────────────────────────────────────────────────────
        SCENE-ONLY: favourite button system
@@ -1491,14 +1611,14 @@
             }
 
             async function removeOrphans(domain) {
-                const { criteria } = getDomainState(domain);
+                const { groups, criteria } = getDomainState(domain);
                 if (!general || !general.allow_destructive_actions) {
                     alert("Enable \"Allow Destructive Actions\" first.");
                     return;
                 }
                 setSavingState({ saving: true, message: "Scanning for orphaned tags…", kind: "info", scope: domain.entityType });
                 try {
-                    const { parentMissing, orphans } = await findOrphanCriterionTags(domain, criteria);
+                    const { parentMissing, orphans } = await findOrphanCriterionTags(domain, groups, criteria);
                     if (parentMissing) {
                         setSavingState({ saving: false, message: "No rating tags found — nothing to scan.", kind: "info", scope: domain.entityType });
                         return;
@@ -1521,7 +1641,7 @@
             }
 
             async function deleteAllTags(domain) {
-                const { criteria } = getDomainState(domain);
+                const { groups, criteria } = getDomainState(domain);
                 if (!general || !general.allow_destructive_actions) {
                     alert("Enable \"Allow Destructive Actions\" first.");
                     return;
@@ -1530,7 +1650,7 @@
                 if (!confirm("Really delete? Last chance.")) return;
                 setSavingState({ saving: true, message: "Deleting tags…", kind: "info", scope: domain.entityType });
                 try {
-                    const destroyed = await destroyAllRatingTags(domain, criteria);
+                    const destroyed = await destroyAllRatingTags(domain, groups, criteria);
                     setSavingState({ saving: false, message: "Deleted " + destroyed + " tag(s). Run Save to recreate.", kind: "success", scope: domain.entityType });
                 } catch (e) {
                     setSavingState({ saving: false, message: "Delete failed: " + (e && e.message ? e.message : e), kind: "error", scope: domain.entityType });
@@ -1564,10 +1684,31 @@
                     const beforeGroups = groupsFromConfig(beforeCfg, domain);
                     const before = criteriaFromConfig(beforeCfg, domain, beforeGroups);
                     const renames = [];
+                    const claimedLegacyPrefixes = new Set();
                     for (const next of criteria) {
                         const prev = before.find(function (p) { return p.id === next.id; });
-                        if (prev && prev.name.trim() !== next.name.trim()) {
-                            renames.push({ from: tagPrefix(prev), to: tagPrefix(next) });
+                        if (prev) {
+                            const oldQualified = tagPrefix(domain, prev, beforeGroups);
+                            const newQualified = tagPrefix(domain, next, groups);
+                            if (oldQualified !== newQualified) {
+                                renames.push({ from: oldQualified, to: newQualified });
+                            }
+                            // Upgrade predecessor tags which were keyed only by
+                            // display name. When names collided, the first
+                            // configured criterion owns the one legacy value;
+                            // the other criterion starts unrated.
+                            const legacy = legacyTagPrefix(prev);
+                            if (!claimedLegacyPrefixes.has(legacy)) {
+                                claimedLegacyPrefixes.add(legacy);
+                                renames.push({ from: legacy, to: newQualified });
+                            }
+                            // Version 3.2 briefly used the rating-system root
+                            // in every tag name. Collapse those verbose names
+                            // to the readable Group · Criterion format.
+                            renames.push({
+                                from: verboseTagPrefix(domain, prev, beforeGroups),
+                                to: newQualified,
+                            });
                         }
                     }
 
@@ -1601,7 +1742,7 @@
                         }
                     }
 
-                    const created = await createMissingTags(domain, criteria);
+                    const created = await createMissingTags(domain, groups, criteria);
                     const createPieces = [];
                     if (created.createdParent) createPieces.push("parent tag");
                     if (created.createdCategories) createPieces.push(created.createdCategories + " criterion tag(s)");

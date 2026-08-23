@@ -115,29 +115,33 @@
 /* Modal Overlay */
 .adv-rating-modal-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
+    inset: 0;
+    box-sizing: border-box;
     background: rgba(0, 0, 0, 0.75);
-    /* Scroll happens on the overlay so tooltips inside the modal aren't
-       clipped by overflow. align-items: flex-start centers horizontally only. */
+    /* Keep the dialog anchored inside the viewport. The modal itself owns the
+       overflow so a long performer criteria list cannot extend above or below
+       the browser's visible area. */
     display: flex;
     justify-content: center;
     align-items: flex-start;
-    padding: 5vh 0;
-    overflow-y: auto;
+    padding: clamp(12px, 5vh, 48px) 0;
+    overflow: hidden;
     z-index: 9999;
 }
 
 /* Modal Content */
 .adv-rating-modal-content {
+    box-sizing: border-box;
     background-color: var(--card-bg, #2e3035);
     border: 1px solid var(--border-color, #444);
     border-radius: 8px;
     padding: 20px;
     width: 480px;
     max-width: 90vw;
+    max-height: calc(100vh - clamp(24px, 10vh, 96px));
+    max-height: calc(100dvh - clamp(24px, 10vh, 96px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
     color: var(--text-color, #e0e0e0);
     box-shadow: 0 5px 25px rgba(0,0,0,0.8);
     font-family: inherit;
@@ -589,4 +593,84 @@ body.mv-picking-mode .adv-favourite-card-btn {
 /* Trigger pressed state while the panel is open. */
 .adv-rating-btn--active {
     box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.5) inset;
+}
+
+/* Performer rating panel beside the scene player. */
+.adv-rating-performer-side-panel {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: clamp(340px, 22vw, 405px);
+    min-width: 0;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    color: var(--text-color, #e0e0e0);
+    background: var(--card-bg, rgba(22, 24, 30, 0.96));
+    border: 1px solid var(--border-color, #444);
+    border-radius: 10px;
+    transition: width 0.18s ease;
+}
+.adv-rating-performer-side-panel.minimized { width: 42px; }
+.adv-rating-side-rail {
+    display: none;
+    width: 100%;
+    height: 100%;
+    padding: 12px 0;
+    color: #ffc107;
+    background: transparent;
+    border: 0;
+    font-size: 1.25rem;
+    cursor: pointer;
+}
+.adv-rating-performer-side-panel.minimized .adv-rating-side-rail { display: block; }
+.adv-rating-performer-side-panel.minimized .adv-rating-side-content { display: none; }
+.adv-rating-side-content {
+    height: 100%;
+    padding: 14px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+.adv-rating-side-performer {
+    margin-top: 2px;
+    color: var(--text-muted, #aaa);
+    font-size: 0.86rem;
+}
+.adv-rating-side-minimize {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 50%;
+    font-size: 1.55rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.adv-rating-side-minimize:hover { background: rgba(255, 255, 255, 0.08); }
+.adv-rating-performer-side-panel .rating-row { margin-bottom: 9px; }
+.adv-rating-performer-side-panel .rating-label { font-size: 1em; }
+.adv-rating-performer-side-panel .rating-star { font-size: 1.4em; }
+
+body.stash-liquid-glass .main.container-fluid > .row:has(> .adv-rating-performer-side-panel) {
+    grid-template-columns: minmax(0, clamp(385px, 22.5vw, 405px)) minmax(0, 1fr) auto !important;
+}
+body.stash-liquid-glass .main.container-fluid > .row:has(> .scene-tabs.collapsed):has(> .adv-rating-performer-side-panel) {
+    grid-template-columns: 2rem minmax(0, 1fr) auto !important;
+}
+@media (max-width: 1199.98px) {
+    .adv-rating-performer-side-panel {
+        position: fixed;
+        top: 74px;
+        right: 8px;
+        z-index: 1040;
+        width: min(405px, calc(100vw - 16px));
+        height: calc(100vh - 82px);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+    }
+    .adv-rating-performer-side-panel.minimized { width: 42px; }
+    body.stash-liquid-glass .main.container-fluid > .row:has(> .adv-rating-performer-side-panel) {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
 }

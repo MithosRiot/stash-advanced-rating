@@ -133,7 +133,7 @@ def handle_scene_hook(stash, hook, settings, precision):
         log.error(f"HANDLE HOOKS: Scene {scene_id} not found.")
         return
     groups, criteria = load_domain(settings, SCENE_DEFAULT_GROUPS, SCENE_DEFAULT_CRITERIA, SCENE_PREFIX)
-    new_rating = core.calculate_rating(scene, criteria, groups, precision, log)
+    new_rating = core.calculate_rating(scene, criteria, groups, precision, log, SCENE_TAG_PARENT)
     if new_rating is None:
         return
     current = scene.get("rating100") or 0
@@ -155,7 +155,7 @@ def handle_performer_hook(stash, hook, settings, precision):
         log.error(f"HANDLE HOOKS: Performer {performer_id} not found.")
         return
     groups, criteria = load_domain(settings, PERFORMER_DEFAULT_GROUPS, PERFORMER_DEFAULT_CRITERIA, PERFORMER_PREFIX)
-    new_rating = core.calculate_rating(performer, criteria, groups, precision, log)
+    new_rating = core.calculate_rating(performer, criteria, groups, precision, log, PERFORMER_TAG_PARENT)
     if new_rating is None:
         return
     current = performer.get("rating100") or 0
@@ -179,7 +179,7 @@ def process_all_scenes(stash, settings, precision):
     log.info(f"PROCESS SCENES: Found {total} scenes")
     for scene in scenes:
         try:
-            new_rating = core.calculate_rating(scene, criteria, groups, precision, log)
+            new_rating = core.calculate_rating(scene, criteria, groups, precision, log, SCENE_TAG_PARENT)
             if new_rating is None:
                 continue
             current = scene.get("rating100") or 0
@@ -202,7 +202,7 @@ def process_all_performers(stash, settings, precision):
     log.info(f"PROCESS PERFORMERS: Found {total} performers")
     for p in performers:
         try:
-            new_rating = core.calculate_rating(p, criteria, groups, precision, log)
+            new_rating = core.calculate_rating(p, criteria, groups, precision, log, PERFORMER_TAG_PARENT)
             if new_rating is None:
                 continue
             current = p.get("rating100") or 0
@@ -221,18 +221,18 @@ def handle_actions(json_input, stash, settings, precision):
     elif mode == "process_performers":
         process_all_performers(stash, settings, precision)
     elif mode == "create_scene_tags":
-        _, criteria = load_domain(settings, SCENE_DEFAULT_GROUPS, SCENE_DEFAULT_CRITERIA, SCENE_PREFIX)
-        core.create_tags(stash, SCENE_TAG_PARENT, [c for c in criteria if c["enabled"]], log)
+        groups, criteria = load_domain(settings, SCENE_DEFAULT_GROUPS, SCENE_DEFAULT_CRITERIA, SCENE_PREFIX)
+        core.create_tags(stash, SCENE_TAG_PARENT, [c for c in criteria if c["enabled"]], groups, log)
     elif mode == "create_performer_tags":
-        _, criteria = load_domain(settings, PERFORMER_DEFAULT_GROUPS, PERFORMER_DEFAULT_CRITERIA, PERFORMER_PREFIX)
-        core.create_tags(stash, PERFORMER_TAG_PARENT, [c for c in criteria if c["enabled"]], log)
+        groups, criteria = load_domain(settings, PERFORMER_DEFAULT_GROUPS, PERFORMER_DEFAULT_CRITERIA, PERFORMER_PREFIX)
+        core.create_tags(stash, PERFORMER_TAG_PARENT, [c for c in criteria if c["enabled"]], groups, log)
     elif mode == "remove_scene_tags":
-        _, criteria = load_domain(settings, SCENE_DEFAULT_GROUPS, SCENE_DEFAULT_CRITERIA, SCENE_PREFIX)
-        core.remove_tags(stash, SCENE_TAG_PARENT, criteria,
+        groups, criteria = load_domain(settings, SCENE_DEFAULT_GROUPS, SCENE_DEFAULT_CRITERIA, SCENE_PREFIX)
+        core.remove_tags(stash, SCENE_TAG_PARENT, criteria, groups,
                          core.coerce_bool(settings.get("allow_destructive_actions"), False), log)
     elif mode == "remove_performer_tags":
-        _, criteria = load_domain(settings, PERFORMER_DEFAULT_GROUPS, PERFORMER_DEFAULT_CRITERIA, PERFORMER_PREFIX)
-        core.remove_tags(stash, PERFORMER_TAG_PARENT, criteria,
+        groups, criteria = load_domain(settings, PERFORMER_DEFAULT_GROUPS, PERFORMER_DEFAULT_CRITERIA, PERFORMER_PREFIX)
+        core.remove_tags(stash, PERFORMER_TAG_PARENT, criteria, groups,
                          core.coerce_bool(settings.get("allow_destructive_actions"), False), log)
     elif mode == "migrate":
         migration_mod.migrate(stash, log, force=True)

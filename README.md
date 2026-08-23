@@ -29,9 +29,14 @@ Existing settings from either predecessor are imported automatically the first t
 
 ## How it works
 
-Each criterion has a Stash tag named `<Criterion Name> ★`, with child tags `<Criterion Name> ★: 0` through `<Criterion Name> ★: 5`. Tagging a scene or performer with `<Criterion> ★: 3` records a score of 3/5 for that criterion. The plugin's `Scene.Update.Post` / `Performer.Update.Post` hooks recompute the entity's overall rating as a weighted mean, mapped to Stash's `rating100` according to your configured star precision.
+Each criterion has a group-qualified Stash tag such as `Physical · Face ★`, with child tags ending in `: 0` through `: 5`. Group qualification allows different groups to use the same criterion display name without sharing a rating. Tagging an entity with the `: 3` child records a score of 3/5 for that criterion. Saving settings upgrades unambiguous tags from earlier formats; when old names collided, the first configured criterion inherits the single old value and the others begin unrated.
 
 ## Configuration
+
+On a scene page, click a performer's rating bubble in the **Details** tab to
+open that performer's advanced ratings beside the playing video. The right-side
+panel starts minimized, can be collapsed with its close button, and can then be
+reopened from the star rail without interrupting playback.
 
 The settings panel (Settings → Plugins → Advanced Rating) is split into:
 
