@@ -327,6 +327,61 @@
 .adv-rating-breakdown-heading.open .adv-rating-breakdown-caret { transform: rotate(90deg); }
 .adv-rating-breakdown-body { display: none; margin-top: 8px; }
 .adv-rating-breakdown-body.open { display: block; }
+
+/* Performer-profile modal: divide the bounded modal height between criteria
+   and an expanded breakdown. A max-height on the breakdown alone made it grow
+   below the viewport; this layout gives both sections real, scrollable space. */
+#perf-rating-modal .adv-rating-modal-content {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - clamp(24px, 10vh, 96px));
+    height: calc(100dvh - clamp(24px, 10vh, 96px));
+    overflow: hidden;
+}
+#perf-rating-modal .adv-rating-header {
+    flex: 0 0 auto;
+}
+#perf-rating-modal .ratings-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 8px;
+    scrollbar-width: thin;
+}
+#perf-rating-modal .adv-rating-breakdown {
+    flex: 0 0 auto;
+    min-height: 0;
+}
+#perf-rating-modal .adv-rating-breakdown:has(.adv-rating-breakdown-body.open) {
+    display: flex;
+    flex: 1 1 42%;
+    flex-direction: column;
+    min-height: 150px;
+}
+#perf-rating-modal .adv-rating-breakdown-heading {
+    flex: 0 0 auto;
+}
+#perf-rating-modal .adv-rating-breakdown-body.open {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 8px 16px 0;
+    scroll-padding-bottom: 16px;
+    box-sizing: border-box;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color, #555) transparent;
+}
+#perf-rating-modal .adv-rating-breakdown-body.open::-webkit-scrollbar {
+    width: 6px;
+}
+#perf-rating-modal .adv-rating-breakdown-body.open::-webkit-scrollbar-thumb {
+    background: var(--border-color, #555);
+    border-radius: 999px;
+}
 .adv-rating-breakdown-group { margin-bottom: 10px; }
 .adv-rating-breakdown-group-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .adv-rating-breakdown-name { font-weight: 600; }

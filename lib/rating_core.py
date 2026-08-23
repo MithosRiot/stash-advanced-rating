@@ -51,12 +51,15 @@ def get_rating_precision(stash, log):
         rso = ui.get("ratingSystemOptions") or {}
         type_ = (rso.get("type") or "").upper()
         sp = (rso.get("starPrecision") or "").upper()
-        if type_ == "DECIMAL":
+        # Decimal is Stash's default and may be represented by an omitted
+        # `type`. Only explicit STARS mode should use starPrecision; otherwise
+        # an old QUARTER value left in the config quantizes decimal ratings.
+        if type_ != "STARS":
             return 1
         return STAR_PRECISION_MAP.get(sp, 20)
     except Exception as e:
-        log.warning(f"GET RATING PRECISION: Falling back to 20: {e}")
-        return 20
+        log.warning(f"GET RATING PRECISION: Falling back to decimal precision: {e}")
+        return 1
 
 
 def load_groups(settings, default_groups, prefix):

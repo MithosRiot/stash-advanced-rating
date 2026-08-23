@@ -150,7 +150,14 @@ def handle_performer_hook(stash, hook, settings, precision):
     if not performer_id:
         log.error("HANDLE HOOKS: Missing performer ID in hook context.")
         return
-    performer = stash.find_performer(performer_id)
+    # Request the exact fields used below. The stashapi default performer
+    # fragment is version-dependent and may omit tags and/or rating100, which
+    # made criterion updates save successfully while the overall rating was
+    # silently left unchanged.
+    performer = stash.find_performer(
+        performer_id,
+        fragment="id name rating100 tags { id name }",
+    )
     if not performer:
         log.error(f"HANDLE HOOKS: Performer {performer_id} not found.")
         return

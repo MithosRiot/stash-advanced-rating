@@ -46,11 +46,15 @@
             const rso = ui.ratingSystemOptions || {};
             const type = (rso.type || "").toUpperCase();
             const sp = (rso.starPrecision || "").toUpperCase();
-            if (type === "DECIMAL") return { precision: 1, label: "Decimal (10-point)" };
+            // Decimal is Stash's default and some versions omit `type` when
+            // it is selected. Only an explicit STARS value may consume
+            // starPrecision; otherwise a stale QUARTER setting can wrongly
+            // quantize decimal ratings in five-point rating100 steps.
+            if (type !== "STARS") return { precision: 1, label: "Decimal (10-point)" };
             const precision = STAR_PRECISION_MAP[sp] || 20;
             return { precision, label: STAR_PRECISION_LABEL[precision] || ("Stars (" + precision + ")") };
         } catch (e) {
-            return { precision: 20, label: "Full star (default)" };
+            return { precision: 1, label: "Decimal (default)" };
         }
     }
     async function getStashRatingPrecision() { return (await getStashRatingInfo()).precision; }
@@ -928,11 +932,22 @@
                         });
                         star.addEventListener('click', async () => {
                             listContainer.style.opacity = '0.5';
-                            if (await updateEntityCriterionTag(domain, entityId, entityTags, prefix, i)) {
-                                entityTags = await domain.fetchEntityTags(entityId); render();
-                                syncRatingToCache(domain, entityId, currentRating100);
+                            try {
+                                if (await updateEntityCriterionTag(domain, entityId, entityTags, prefix, i)) {
+                                    entityTags = await domain.fetchEntityTags(entityId); render();
+                                    // Persist the computed overall rating here as
+                                    // part of the same user action. The post-update
+                                    // hook remains a server-side safety net, but
+                                    // sorting and card ratings no longer depend on
+                                    // hook scheduling or hook-context differences.
+                                    if (currentRating100 !== null) {
+                                        await domain.updateEntityRating(entityId, currentRating100);
+                                    }
+                                    syncRatingToCache(domain, entityId, currentRating100);
+                                }
+                            } finally {
+                                listContainer.style.opacity = '1';
                             }
-                            listContainer.style.opacity = '1';
                         });
                         starsDiv.appendChild(star);
                     }
@@ -940,11 +955,17 @@
                     clearBtn.title = 'Remove Category Rating';
                     clearBtn.addEventListener('click', async () => {
                         listContainer.style.opacity = '0.5';
-                        if (await updateEntityCriterionTag(domain, entityId, entityTags, prefix, null)) {
-                            entityTags = await domain.fetchEntityTags(entityId); render();
-                            syncRatingToCache(domain, entityId, currentRating100);
+                        try {
+                            if (await updateEntityCriterionTag(domain, entityId, entityTags, prefix, null)) {
+                                entityTags = await domain.fetchEntityTags(entityId); render();
+                                if (currentRating100 !== null) {
+                                    await domain.updateEntityRating(entityId, currentRating100);
+                                }
+                                syncRatingToCache(domain, entityId, currentRating100);
+                            }
+                        } finally {
+                            listContainer.style.opacity = '1';
                         }
-                        listContainer.style.opacity = '1';
                     });
                     starsDiv.appendChild(clearBtn);
                     row.appendChild(label); row.appendChild(starsDiv); listContainer.appendChild(row);
