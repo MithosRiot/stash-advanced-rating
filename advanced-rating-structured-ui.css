@@ -1,0 +1,53 @@
+.ar-zero-rating,
+.ar-na-rating {
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: .8rem;
+  line-height: 1.2;
+  padding: 2px 6px;
+  margin: 0 3px;
+}
+
+.ar-zero-rating.active,
+.ar-na-rating.active {
+  background: rgba(255,255,255,.16);
+  font-weight: 700;
+}
+
+.ar-zero-rating:disabled,
+.rating-star.ar-disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.ar-not-applicable .rating-stars-modal .rating-star {
+  pointer-events: none;
+}
+
+.ar-state-pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: .7rem;
+  line-height: 1.3;
+  opacity: .85;
+}
+
+.ar-state-pill-na {
+  border: 1px solid currentColor;
+  font-weight: 700;
+}
+
+.ar-state-pill-unrated,
+.ar-state-pill-legacy {
+  border: 1px solid rgba(255,255,255,.25);
+}
+
+.ar-saving {
+  opacity: .55;
+  pointer-events: none;
+}
