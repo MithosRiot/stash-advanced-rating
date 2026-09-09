@@ -4,6 +4,8 @@
 
 import re
 
+import rating_storage as storage
+
 TAG_PATTERN = re.compile(r"^(.+?)\s*:\s*([0-5])$")
 TAG_SUFFIX = " ★"
 
@@ -51,9 +53,6 @@ def get_rating_precision(stash, log):
         rso = ui.get("ratingSystemOptions") or {}
         type_ = (rso.get("type") or "").upper()
         sp = (rso.get("starPrecision") or "").upper()
-        # Decimal is Stash's default and may be represented by an omitted
-        # `type`. Only explicit STARS mode should use starPrecision; otherwise
-        # an old QUARTER value left in the config quantizes decimal ratings.
         if type_ != "STARS":
             return 1
         return STAR_PRECISION_MAP.get(sp, 20)
@@ -104,8 +103,6 @@ def load_criteria(settings, default_criteria, groups, prefix):
 def _criteria_from_legacy_defaults(settings, default_criteria, valid_group_ids, fallback_group, prefix):
     out = []
     for d in default_criteria:
-        # Migrated legacy keys live under `<prefix>disable_X`; pre-migration
-        # configs (handled at install time by migration.py) won't reach here.
         legacy_key = d.get("legacy_key")
         legacy_disabled = coerce_bool(settings.get(f"{prefix}{legacy_key}") if legacy_key else None, False)
         group = d["group"] if d["group"] in valid_group_ids else fallback_group
@@ -125,36 +122,57 @@ def tag_prefix(tag_parent_def, criterion, groups):
     return f"{group_name} · {criterion['name']}{TAG_SUFFIX}"
 
 
-def calculate_rating(entity, criteria, groups, precision, log, tag_parent_def):
-    """Compute new rating100 from tag matches; return int or None if no change is
-    appropriate. Caller decides whether to push the update."""
+def calculate_rating(entity, criteria, groups, precision, log, tag_parent_def, domain=None):
+    """Compute rating100 from structured values with legacy tag fallback.
+
+    When ``domain`` is supplied, custom fields are authoritative per criterion:
+    - explicit 0-5 structured value contributes to the score;
+    - N/A excludes the criterion entirely and blocks legacy fallback;
+    - Unrated falls back to legacy score tags during the migration window.
+
+    Omitting ``domain`` preserves tag-only behavior for compatibility callers.
+    """
     enabled = [c for c in criteria if c["enabled"]]
     if not enabled:
         return None
+
     by_prefix = {tag_prefix(tag_parent_def, c, groups): c for c in enabled}
     for c in enabled:
         by_prefix[f"{tag_parent_def['name']} · {tag_prefix(tag_parent_def, c, groups)}"] = c
-    # Read predecessor name-only tags until the settings UI upgrades them.
-    # A collided legacy tag can represent only one value, so the first
-    # configured criterion with that name owns it deterministically.
     for c in enabled:
         by_prefix.setdefault(f"{c['name']}{TAG_SUFFIX}", c)
 
-    hits_by_group = {g["id"]: [] for g in groups}
+    tag_hits_by_criterion = {c["id"]: [] for c in enabled}
     tags = [tag["name"] for tag in (entity.get("tags") or [])]
     for tag in tags:
         match = TAG_PATTERN.match(tag)
         if not match:
             continue
         category, score = match.groups()
-        category = category.strip()
-        c = by_prefix.get(category)
-        if not c:
-            continue
+        c = by_prefix.get(category.strip())
+        if c:
+            tag_hits_by_criterion[c["id"]].append(int(score))
+
+    hits_by_group = {g["id"]: [] for g in groups}
+    custom_fields = entity.get("custom_fields") or {}
+
+    for c in enabled:
+        scores = None
+        if domain:
+            state = storage.read_state(custom_fields, domain, c["id"])
+            if state.not_applicable:
+                continue
+            if state.is_rated:
+                scores = [state.value]
+
+        if scores is None:
+            scores = tag_hits_by_criterion.get(c["id"], [])
+
         bucket = hits_by_group.get(c["group"])
         if bucket is None:
             continue
-        bucket.append((int(score), float(c["weight"])))
+        for score in scores:
+            bucket.append((score, float(c["weight"])))
 
     total_hits = sum(len(h) for h in hits_by_group.values())
     if total_hits < MINIMUM_REQUIRED_TAGS:
@@ -182,7 +200,7 @@ def calculate_rating(entity, criteria, groups, precision, log, tag_parent_def):
 
     precision = max(1, precision)
     final_rating100 = round(round(final_avg * 20 / precision) * precision)
-    final_rating100 = max(precision, min(100, final_rating100))
+    final_rating100 = max(0, min(100, final_rating100))
     log.debug(f"AVERAGE: {final_avg:.2f}/5, NEW: {final_rating100}/100")
     return final_rating100
 
