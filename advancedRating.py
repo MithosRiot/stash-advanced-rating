@@ -38,6 +38,7 @@ except ModuleNotFoundError:
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import rating_core as core
 import migration as migration_mod
+import rating_data_migration as rating_data_migration_mod
 
 PLUGIN_ID = "advancedRating"
 
@@ -150,10 +151,6 @@ def handle_performer_hook(stash, hook, settings, precision):
     if not performer_id:
         log.error("HANDLE HOOKS: Missing performer ID in hook context.")
         return
-    # Request the exact fields used below. The stashapi default performer
-    # fragment is version-dependent and may omit tags and/or rating100, which
-    # made criterion updates save successfully while the overall rating was
-    # silently left unchanged.
     performer = stash.find_performer(
         performer_id,
         fragment="id name rating100 tags { id name }",
@@ -220,6 +217,29 @@ def process_all_performers(stash, settings, precision):
     log.info(f"PROCESS PERFORMERS: Done ({total} processed)")
 
 
+def migrate_rating_data(stash, settings):
+    scene_groups, scene_criteria = load_domain(
+        settings, SCENE_DEFAULT_GROUPS, SCENE_DEFAULT_CRITERIA, SCENE_PREFIX
+    )
+    performer_groups, performer_criteria = load_domain(
+        settings, PERFORMER_DEFAULT_GROUPS, PERFORMER_DEFAULT_CRITERIA, PERFORMER_PREFIX
+    )
+    return rating_data_migration_mod.migrate_all(
+        stash,
+        {
+            "root_name": SCENE_TAG_PARENT["name"],
+            "groups": scene_groups,
+            "criteria": scene_criteria,
+        },
+        {
+            "root_name": PERFORMER_TAG_PARENT["name"],
+            "groups": performer_groups,
+            "criteria": performer_criteria,
+        },
+        log,
+    )
+
+
 def handle_actions(json_input, stash, settings, precision):
     args = json_input.get("args", {})
     mode = args.get("mode")
@@ -243,6 +263,8 @@ def handle_actions(json_input, stash, settings, precision):
                          core.coerce_bool(settings.get("allow_destructive_actions"), False), log)
     elif mode == "migrate":
         migration_mod.migrate(stash, log, force=True)
+    elif mode == "migrate_rating_data":
+        migrate_rating_data(stash, settings)
 
 
 def handle_hooks(json_input, stash, settings, precision):
