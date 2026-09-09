@@ -129,12 +129,14 @@ def handle_scene_hook(stash, hook, settings, precision):
     if not scene_id:
         log.error("HANDLE HOOKS: Missing scene ID in hook context.")
         return
-    scene = stash.find_scene(scene_id, fragment="id title rating100 tags { id name }")
+    scene = stash.find_scene(scene_id, fragment="id title rating100 tags { id name } custom_fields")
     if not scene:
         log.error(f"HANDLE HOOKS: Scene {scene_id} not found.")
         return
     groups, criteria = load_domain(settings, SCENE_DEFAULT_GROUPS, SCENE_DEFAULT_CRITERIA, SCENE_PREFIX)
-    new_rating = core.calculate_rating(scene, criteria, groups, precision, log, SCENE_TAG_PARENT)
+    new_rating = core.calculate_rating(
+        scene, criteria, groups, precision, log, SCENE_TAG_PARENT, domain="scene"
+    )
     if new_rating is None:
         return
     current = scene.get("rating100") or 0
@@ -153,13 +155,15 @@ def handle_performer_hook(stash, hook, settings, precision):
         return
     performer = stash.find_performer(
         performer_id,
-        fragment="id name rating100 tags { id name }",
+        fragment="id name rating100 tags { id name } custom_fields",
     )
     if not performer:
         log.error(f"HANDLE HOOKS: Performer {performer_id} not found.")
         return
     groups, criteria = load_domain(settings, PERFORMER_DEFAULT_GROUPS, PERFORMER_DEFAULT_CRITERIA, PERFORMER_PREFIX)
-    new_rating = core.calculate_rating(performer, criteria, groups, precision, log, PERFORMER_TAG_PARENT)
+    new_rating = core.calculate_rating(
+        performer, criteria, groups, precision, log, PERFORMER_TAG_PARENT, domain="performer"
+    )
     if new_rating is None:
         return
     current = performer.get("rating100") or 0
@@ -174,7 +178,10 @@ def handle_performer_hook(stash, hook, settings, precision):
 def process_all_scenes(stash, settings, precision):
     log.info("PROCESSING ALL SCENES")
     try:
-        scenes = stash.find_scenes({}, get_count=False, fragment="id title rating100 tags { id name }")
+        scenes = stash.find_scenes(
+            {}, get_count=False,
+            fragment="id title rating100 tags { id name } custom_fields",
+        )
     except Exception as e:
         log.error(f"PROCESS SCENES: Failed to fetch scenes: {e}")
         return
@@ -183,7 +190,9 @@ def process_all_scenes(stash, settings, precision):
     log.info(f"PROCESS SCENES: Found {total} scenes")
     for scene in scenes:
         try:
-            new_rating = core.calculate_rating(scene, criteria, groups, precision, log, SCENE_TAG_PARENT)
+            new_rating = core.calculate_rating(
+                scene, criteria, groups, precision, log, SCENE_TAG_PARENT, domain="scene"
+            )
             if new_rating is None:
                 continue
             current = scene.get("rating100") or 0
@@ -197,7 +206,10 @@ def process_all_scenes(stash, settings, precision):
 def process_all_performers(stash, settings, precision):
     log.info("PROCESSING ALL PERFORMERS")
     try:
-        performers = stash.find_performers({}, get_count=False, fragment="id name rating100 tags { id name }")
+        performers = stash.find_performers(
+            {}, get_count=False,
+            fragment="id name rating100 tags { id name } custom_fields",
+        )
     except Exception as e:
         log.error(f"PROCESS PERFORMERS: Failed to fetch performers: {e}")
         return
@@ -206,7 +218,9 @@ def process_all_performers(stash, settings, precision):
     log.info(f"PROCESS PERFORMERS: Found {total} performers")
     for p in performers:
         try:
-            new_rating = core.calculate_rating(p, criteria, groups, precision, log, PERFORMER_TAG_PARENT)
+            new_rating = core.calculate_rating(
+                p, criteria, groups, precision, log, PERFORMER_TAG_PARENT, domain="performer"
+            )
             if new_rating is None:
                 continue
             current = p.get("rating100") or 0
